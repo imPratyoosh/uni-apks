@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   check-versions:
@@ -34,6 +35,12 @@ jobs:
 
             echo "build_${APP}=${BUILD}" >> "$GITHUB_OUTPUT"
           done
+
+      - name: Clear older runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run list -L400 --repo "$GITHUB_REPOSITORY" --json databaseId -q '.[].databaseId' | tail -n+31 | xargs -IID gh api "repos/$GITHUB_REPOSITORY/actions/runs/ID" -X DELETE || :
 
   build-morphe:
     name: build (Morphe)
