@@ -46,14 +46,13 @@ class AppEntry:
         return next(iter(self.dl_urls), None)
 
 def load_toml(path: Path) -> dict[str, object]:
-    if path.suffix != ".toml":
-        raise ValueError(f"Only .toml config files are supported, got: '{path}'")
+    with path.open("rb") as fp:
+        return tomllib.load(fp)
 
-    try:
-        with path.open("rb") as fp:
-            return tomllib.load(fp)
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"Config file '{path}' is not valid UTF-8: {exc}") from exc
+def _parse_bool(value: object, field: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"'{field}' must be a boolean (true/false without quotes), got {type(value).__name__}")
 
 def parse_config(data: dict[str, object]) -> Config:
     return Config(
@@ -75,7 +74,12 @@ def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
         if (arch := str(t.get("arch", "all"))) not in VALID_ARCHES:
             raise ValueError(f"Wrong arch '{arch}' for '{table_name}'")
 
-        dl_urls = {src: url for src in SOURCES if (url := _clean_dlurl(t.get(f"{src}-dlurl")))}
+        dl_urls: dict[str, str] = {}
+        for src in SOURCES:
+            url = t.get(f"{src}-dlurl")
+            if isinstance(url, str):
+                dl_urls[src] = url.rstrip("/").removesuffix("download").rstrip("/")
+
         inc_raw = str(t.get("included-patches", ""))
         exc_raw = str(t.get("excluded-patches", ""))
         for name, raw in (("included-patches", inc_raw), ("excluded-patches", exc_raw)):
@@ -102,15 +106,3 @@ def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
             enabled=_parse_bool(t.get("enabled", True), "enabled"),
         ))
     return entries
-
-def _clean_dlurl(url: object) -> str | None:
-    return str(url).rstrip("/").removesuffix("download").rstrip("/") if isinstance(url, str) else None
-
-def _parse_bool(value: object, field: str) -> bool:
-    match value:
-        case bool():
-            return value
-        case str() as v if v.lower() in ("true", "false"):
-            return v.lower() == "true"
-        case _:
-            raise ValueError(f"'{value}' is not a valid option for '{field}': only true or false is allowed")

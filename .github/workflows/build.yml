@@ -44,13 +44,12 @@ jobs:
         run: uv sync --frozen
 
       - name: Prepare version and draft release
+        id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        id: version
         run: |
           VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
-
           if gh release view "$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$VER" --draft --repo "$GITHUB_REPOSITORY"
           else
@@ -59,9 +58,7 @@ jobs:
 
       - name: Set matrix based on patch source
         id: set-matrix
-        run: |
-          matrix="$(uv run main.py get-matrix "${{ inputs.patch_source }}")"
-          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(uv run main.py get-matrix '${{ inputs.patch_source }}')" >> "$GITHUB_OUTPUT"
 
   run:
     needs: prepare
@@ -95,11 +92,11 @@ jobs:
         run: uv sync --frozen
 
       - name: Build APKs
-        run: uv run main.py ${{ matrix.id }} ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: uv run main.py ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to draft release
         if: always()

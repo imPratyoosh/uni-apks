@@ -2,17 +2,13 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
-import zipfile
 from pathlib import Path
 
-from src.core.config import TEMP_DIR
 from src.core.logger import pr, wpr
 from src.core.prebuilts import get_highest_ver
 
 _SECRET_PATTERNS = re.compile(r"(keystore-password=|keystore-entry-password=)\S+")
-_RE_COMMON_VERSIONS = re.compile(r"Most common compatible versions:\n(.*?)(?:\n\n|\Z)", re.DOTALL)
-_RE_VERSION_TAGS = re.compile(r"\s*\(.*?\)")
+
 
 class PatcherError(Exception):
     pass
@@ -43,16 +39,21 @@ def _parse_patch_block(output: str, patch_name: str) -> list[str]:
     return []
 
 def _parse_versions_output(output: str) -> list[str]:
-    if m := _RE_COMMON_VERSIONS.search(output):
-        return [_RE_VERSION_TAGS.sub("", v).strip() for v in m.group(1).splitlines() if v.strip()]
-    return []
+    marker = "Most common compatible versions:\n"
+    if marker not in output:
+        return []
+
+    block = output.split(marker)[1].split("\n\n")[0]
+    versions = []
+    for line in block.splitlines():
+        clean_ver = line.split("(")[0].strip()
+        if clean_ver:
+            versions.append(clean_ver)
+
+    return versions
 
 def _redact_args(args: list[str | Path]) -> list[str]:
     return [_SECRET_PATTERNS.sub(r"\1***", str(a)) for a in args]
-
-def _search_output(output: str, pattern: str) -> str:
-    m = re.search(pattern, output, re.I | re.M)
-    return m.group(1).strip() if m else ""
 
 class PatcherCLI:
     def __init__(self, cli_jar: Path, patches_mpp: Path, apksigner: Path, ks_path: Path | None = None, sig_file: Path = Path("sig.txt")) -> None:
@@ -89,21 +90,30 @@ class PatcherCLI:
         return get_highest_ver(versions)
 
     def resolve_auto_patches(self, list_patches_output: str) -> tuple[str, str]:
-        return (_search_output(list_patches_output, r"^Name:\s*(.*(?:gmscore|microg).*)$"), _search_output(list_patches_output, r"^Name:\s*(.*disable play store updates.*)$"))
+        microg_patch = ""
+        psu_patch = ""
+        for line in list_patches_output.splitlines():
+            if not line.lower().startswith("name:"):
+                continue
+
+            patch_name = line[5:].strip()
+            name_lower = patch_name.lower()
+            if "gmscore" in name_lower or "microg" in name_lower:
+                microg_patch = patch_name
+            elif "disable play store updates" in name_lower:
+                psu_patch = patch_name
+
+        return microg_patch, psu_patch
 
     def build_patch_args(self, included_patches: list[str], excluded_patches: list[str], exclusive: bool, extra_args: list[str], arch: str, auto_patches: list[str], force: bool = False) -> list[str]:
         active_auto = {p for p in auto_patches if p}
         p_args: list[str] = ["-f"] if force else []
-        for p in excluded_patches:
-            if p in active_auto:
-                wpr(f"You can't exclude '{p}' patch as that's done by builder automatically")
-            else:
-                p_args.extend(("-d", p))
-        for p in included_patches:
-            if p in active_auto:
-                wpr(f"You can't include '{p}' patch as that's done by builder automatically")
-            else:
-                p_args.extend(("-e", p))
+        for patch_list, flag, action in ((excluded_patches, "-d", "exclude"), (included_patches, "-e", "include")):
+            for p in patch_list:
+                if p in active_auto:
+                    wpr(f"You can't {action} '{p}' patch as that's done by builder automatically")
+                else:
+                    p_args.extend((flag, p))
 
         if exclusive:
             p_args.append("--exclusive")
@@ -118,7 +128,6 @@ class PatcherCLI:
         tmp_files_dir = output_apk.parent / f"tmp-{output_apk.stem}"
         base_cmd = ["-jar", self.cli_jar, "patch", stock_apk, "--purge", "-o", output_apk, "-p", self.patches_mpp, "-t", tmp_files_dir]
         ks_args: list[str] = []
-
         if self.ks_path and (ks_pass := os.getenv("KEYSTORE_PASS", "")):
             ks_args = [f"--keystore={self.ks_path}", f"--keystore-entry-password={ks_pass}", f"--keystore-password={ks_pass}", "--signer=krvstek", "--keystore-entry-alias=krvstek"]
         elif Path("morphe.keystore").exists():
@@ -128,47 +137,21 @@ class PatcherCLI:
         try:
             _run_java(*base_cmd, *ks_args, *patch_args, capture=False)
         except subprocess.TimeoutExpired:
-            msg = f"Patching '{stock_apk.name}' failed: Process timed out after 10 minutes"
-        except PatcherError as exc:
-            msg = f"Patching '{stock_apk.name}' failed:\n{exc}"
-        except Exception:
-            msg = f"Patching '{stock_apk.name}' failed due to an unexpected system error"
-        else:
-            msg = None
-        finally:
-            if tmp_files_dir.exists():
-                shutil.rmtree(tmp_files_dir, ignore_errors=True)
-
-        if msg:
             output_apk.unlink(missing_ok=True)
-            raise PatcherError(msg) from None
-
-        if not output_apk.exists():
-            raise PatcherError(f"Patching '{stock_apk.name}' failed: Output not created")
+            raise PatcherError(f"Patching '{stock_apk.name}' failed, process timed out after 10 minutes") from None
+        except PatcherError as exc:
+            output_apk.unlink(missing_ok=True)
+            raise PatcherError(f"Patching '{stock_apk.name}' failed:\n{exc}") from exc
+        finally:
+            shutil.rmtree(tmp_files_dir, ignore_errors=True)
 
     def check_signature(self, apk: Path, pkg_name: str) -> bool:
-        if not (expected := self._signatures.get(pkg_name)):
+        expected = self._signatures.get(pkg_name)
+        if not expected:
             return True
-
-        tmp_apk: Path | None = None
-        try:
-            with zipfile.ZipFile(apk, "r") as zf:
-                names = zf.namelist()
-                if inner := next((n for n in ("base.apk", f"{pkg_name}.apk") if n in names), None):
-                    with tempfile.NamedTemporaryFile(dir=TEMP_DIR, suffix=".apk", delete=False) as tf:
-                        tmp_apk = Path(tf.name)
-                        with zf.open(inner) as in_f:
-                            shutil.copyfileobj(in_f, tf)
-                    apk = tmp_apk
-        except zipfile.BadZipFile as exc:
-            wpr(f"Could not unpack bundle for sig check ({apk.name}): {exc}, verifying outer file")
 
         try:
             output = _run_java("--enable-native-access=ALL-UNNAMED", "-jar", self.apksigner, "verify", "--print-certs", apk)
-            actual_hashes = [m.lower() for m in re.findall(r"SHA-256 digest:\s*(\S+)", output, re.I)]
-            return bool(actual_hashes) and expected in actual_hashes
+            return expected.lower() in output.lower()
         except PatcherError:
             return False
-        finally:
-            if tmp_apk:
-                tmp_apk.unlink(missing_ok=True)

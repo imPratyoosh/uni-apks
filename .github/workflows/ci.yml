@@ -12,56 +12,31 @@ jobs:
   check-versions:
     runs-on: ubuntu-latest
     outputs:
-      build_matrix: ${{ steps.compare.outputs.build_matrix }}
+      build_matrix: ${{ steps.get-matrix.outputs.build_matrix }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      - name: Compare upstream and local release dates
-        id: compare
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Get build matrix
+        id: get-matrix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 -c '
-          import tomllib
-
-          with open("config.toml", "rb") as f:
-              data = tomllib.load(f)
-
-          default_brand = str(data.get("brand", "morphe")).lower()
-          default_source = str(data.get("patches-source", "MorpheApp/morphe-patches"))
-
-          sources = set()
-          for value in data.values():
-              if isinstance(value, dict):
-                  brand = str(value.get("brand", default_brand)).lower()
-                  source = str(value.get("patches-source", default_source))
-                  sources.add(f"{brand}|{source}")
-
-          print(*sorted(sources), sep="\n")
-          ' > sources.txt
-
-          declare -A NEEDS_BUILD
-          BRANDS=()
-          while IFS="|" read -r BRAND UPSTREAM_REPO; do
-            [[ "${NEEDS_BUILD[$BRAND]}" == "1" ]] && continue
-
-            UPSTREAM_DATE=$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq '.published_at' 2>/dev/null || echo "null")
-            OUR_DATE=$(gh api "repos/${{ github.repository }}/releases" --jq "[.[] | select(.tag_name | endswith(\"-${BRAND}\"))] | first | .published_at // \"null\"" 2>/dev/null || echo "null")
-
-            if [[ "${OUR_DATE}" == "null" || "${UPSTREAM_DATE}" > "${OUR_DATE}" ]]; then
-              BRANDS+=("$BRAND")
-              NEEDS_BUILD[$BRAND]="1"
-            fi
-          done < sources.txt
-
-          MATRIX_JSON=$(jq -nc '$ARGS.positional' --args "${BRANDS[@]}")
-          echo "build_matrix=${MATRIX_JSON}" >> "$GITHUB_OUTPUT"
+        run: echo "build_matrix=$(uv run main.py get-matrix)" >> "$GITHUB_OUTPUT"
 
       - name: Clear older runs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh run list -L400 --repo "$GITHUB_REPOSITORY" --json databaseId -q '.[].databaseId' | tail -n+91 | xargs -IID gh api "repos/$GITHUB_REPOSITORY/actions/runs/ID" -X DELETE || :
+          gh run list -L400 --repo "$GITHUB_REPOSITORY" --json databaseId -q '.[].databaseId' | tail -n+91 | xargs -IID gh api "repos/$GITHUB_REPOSITORY/actions/runs/ID" -X DELETE || true
 
   build-morphe:
     name: build (Morphe)
