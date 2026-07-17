@@ -9,20 +9,14 @@
 Here you can download and use applications selected for this repository, which are enhanced with many functionalities that will certainly be useful to you.
 </div>
 
-> [!IMPORTANT]
-> ### 📱 [Keep Android Open](https://keepandroidopen.org/)
-> **It's your phone, but Google wants to decide what you can install.**  
-> Starting September 2026, they plan to block apps that don't have their "official" stamp of approval. This hits every independent project, your privacy, and your right to use your device the way you want.  
-> **[Don't let them lock your phone.](https://keepandroidopen.org/)**
-
 ## 🔥 Features
 
-- 🛑 **Ad-blocking**: blocks all types of ads (who needs them anyway?).
-- 🚀 **Enhanced features**: squeezes more out of the app.
-- ⭐ **Customization**: personalize the app to fit your needs.
-- 💉 **Optimization**: optimized APKs for performance and size.
-- 🔒 **Persistent**: patched app won't be updated or overwritten by Play Store.
-- 🔄 **Auto-updates**: supports automatic updates through [Obtainium](https://github.com/ImranR98/Obtainium) using individual configs (see app list below).
+- 🛑 **Ad-blocking:** blocks all types of ads (who needs them anyway?).
+- 🚀 **Enhanced features:** squeezes more out of the app.
+- ⭐ **Customization:** personalize the app to fit your needs.
+- 💉 **Optimization:** optimized APKs for performance and size.
+- 🔒 **Persistent:** patched app won't be updated or overwritten by Play Store.
+- 🔄 **Auto-updates:** supports automatic updates through [Obtainium](https://github.com/ImranR98/Obtainium) using individual configs (see app list below).
 - ✨ **And much more!**
 
 ## 📋 List of apps in this repository
@@ -58,6 +52,17 @@ To ensure that the APK files you download are genuinely compiled by this project
 ## 📚 Documentation & Contributing
 
 For full configuration reference, setup and contributing guide, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## ⚖️ License & Copyright
+
+**Copyright (C) 2026 krvstek**
+
+This project is open-source and distributed under the **GNU GPLv3** license. You are free to use, modify, and redistribute this software, but you **must** keep the original copyright notices intact.
+
+- 📄 **Full license:** See the [LICENSE](LICENSE) file.
+- 👥 **Contributors:** See the [AUTHORS](AUTHORS) file for the full list of copyright holders.
+- 🎨 **Assets:** Base icon designs by [kazimmt](https://github.com/kazimmt). Modified for this project. See [icons/README.md](icons/README.md) for details.
+- 🔗 **Canonical source:** [github.com/krvstek/uni-apks](https://github.com/krvstek/uni-apks)
 
 ## ⚠️ Disclaimer
 
