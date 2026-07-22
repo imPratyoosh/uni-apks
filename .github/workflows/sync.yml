@@ -1,0 +1,75 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    name: Sync Upstream
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: false
+
+      - name: Perform Sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+          UPSTREAM_URL: ${{ vars.UPSTREAM_URL }}
+          IGNORE_SYNC_FILES: ${{ vars.IGNORE_SYNC_FILES }}
+        run: |
+          # 1. Setup git identity
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 2. Configure upstream source
+          if [ -z "$UPSTREAM_URL" ]; then
+            UPSTREAM_URL=$(gh api repos/${{ github.repository }} -q '.parent.html_url // empty')
+          fi
+          
+          if [ -z "$UPSTREAM_URL" ]; then
+            echo "::error title=Sync Failed::No upstream repository defined or found."
+            exit 1
+          }
+
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream refs/heads/main:refs/remotes/upstream/main
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+
+          # 3. Check for new commits
+          if [ "$(git rev-list --count origin/main..upstream/main)" -eq 0 ]; then
+            echo "::notice title=Sync upstream::No new commits found."
+            exit 0
+          fi
+
+          # 4. Define files to protect from upstream changes
+          IGNORE_LIST="${IGNORE_SYNC_FILES:-config.toml sig.txt README.md .github/workflows/ci.yml}"
+
+          # 5. Attempt direct merge
+          git merge --no-commit --no-ff upstream/main || true
+
+          # 6. Restore protected files to local versions so upstream doesn't overwrite them
+          for pattern in $IGNORE_LIST; do
+            git checkout HEAD -- "$pattern" 2>/dev/null || true
+            git add "$pattern" 2>/dev/null || true
+          done
+
+          # 7. Commit and push changes
+          git commit --allow-empty -m "chore: sync fork with upstream"
+          
+          if ! git push origin main; then
+            echo "::warning title=Sync Failed::Push rejected. Ensure PAT_TOKEN has repository permissions."
+            exit 1
+          fi
+
+          echo "::notice title=Sync upstream::Successfully synced with upstream."
+
