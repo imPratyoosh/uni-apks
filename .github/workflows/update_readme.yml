@@ -1,0 +1,49 @@
+name: Auto-Update README
+
+on:
+  workflow_run:
+    workflows: ["CI"] 
+    types:
+      - completed
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      actions: read 
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Download Build Logs via GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Download the full log archive as a zip file (only 1 API request, bypassing limits)
+          curl -s -L -H "Authorization: Bearer $GH_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               -o logs.zip \
+               "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs"
+          
+          # 2. Unzip the logs into a temporary folder
+          unzip -q logs.zip -d all_logs
+          
+          # 3. Combine all the individual job text files into our single build.log
+          find all_logs -type f -name "*.txt" -exec cat {} + > build.log
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Python Script
+        run: python update_readme.py
+
+      - name: Commit Updated README
+        uses: stefanzweifel/git-auto-commit-action@v5.1.0
+        with:
+          commit_message: "docs: dynamically update README and memory from latest build logs"
+          file_pattern: 'README.md apps_state.json' 
