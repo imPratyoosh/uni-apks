@@ -6,6 +6,8 @@ Welcome to the **Advanced Morphe Builder**. This repository provides ready-to-in
 
 <img src="https://github.com/andreasbm/readme/blob/master/assets/lines/rainbow.png" width="100%" alt="Rainbow Divider" />
 
+<a href="https://t.me/PratyooshHub"><img src="https://img.shields.io/badge/Telegram-000000?style=for-the-badge&logo=telegram&logoColor=00F0FF&labelColor=1A1B26&color=1A1B26" height="35" alt="Telegram"></a><br>
+
 ## 📱 Available Apps
 
 Click on an app below to view applied patches & other informations.
