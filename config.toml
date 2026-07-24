@@ -91,7 +91,7 @@ brand = "Gboard"
 # apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/gboard/"
 uptodown-dlurl = "https://gboard-go.en.uptodown.com/android"
 changelog-keywords = ["Gboard"]
-version =  "17.0.10.880768217-release-arm64-v8a"
+version =  "auto"
 arch = "arm64-v8a"
 
 [Gboard.patches]
